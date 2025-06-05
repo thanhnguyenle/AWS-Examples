@@ -1,9 +1,10 @@
 import os
 import random
+import sys
 import time
 from datetime import datetime, timedelta
 
-number_of_entries = int(os.environ["NENTRIES"]) or 100
+number_of_entries = int(os.environ.get("NENTRIES", "100"))
 
 # Generate a random IP address
 def generate_ip():
@@ -40,15 +41,20 @@ def generate_path():
     ]
     return random.choice(paths)
 
-# Initialize the last_time outside of the function
-last_time = datetime.now() - timedelta(minutes=1000)
+# FIXED: Initialize with recent time (within last few hours)
+last_time = datetime.now() - timedelta(hours=2)
 
-# Generate a random timestamp
+# Generate a random timestamp (FIXED: smaller increments for recent logs)
 def generate_timestamp():
     global last_time
-    # Increase time by a random number of minutes (for example, between 1 and 10)
-    increment = random.randint(1, 10)
-    last_time += timedelta(minutes=increment)
+    # FIXED: Increase time by seconds/minutes instead of large minutes
+    increment_seconds = random.randint(10, 300)  # 10 seconds to 5 minutes
+    last_time += timedelta(seconds=increment_seconds)
+    
+    # Ensure we don't go into the future (CloudWatch rejects future logs > 2 hours)
+    if last_time > datetime.now():
+        last_time = datetime.now() - timedelta(minutes=random.randint(1, 60))
+    
     return last_time.strftime("%d/%b/%Y:%H:%M:%S +0000")
 
 # Generate the log entry in ELF format
@@ -71,9 +77,14 @@ def generate_log_entry():
     )
     return log_entry
 
-# Generate 100 log entries
+# Generate log entries
 log_entries = [generate_log_entry() for _ in range(number_of_entries)]
 
-# Print the log entries
-for entry in log_entries:
-    print(entry)
+# Save to file
+with open("web_server_logs.log", "w") as f:
+    for entry in log_entries:
+        f.write(entry + "\n")
+
+# Debug: Print timestamp range
+print(f"Generated {number_of_entries} log entries and saved to web_server_logs.log")
+print(f"Timestamp range: {(datetime.now() - timedelta(hours=2)).strftime('%Y-%m-%d %H:%M:%S')} to {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
