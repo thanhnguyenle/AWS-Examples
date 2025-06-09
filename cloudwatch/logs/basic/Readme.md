@@ -25,9 +25,20 @@ aws logs put-retention-policy --log-group-name "/example/basic/app2" --retention
 aws logs create-log-stream --log-group-name "/example/basic/app2" --log-stream-name $(date +%s)
 ```
 
-## Send Logs to Log Stream
+# List all logs streams in a log group in AWS
+```sh
+aws logs describe-log-streams --log-group-name "/example/basic/app2"
+```
 
+## Send Logs to Log Stream
+```sh
 aws logs put-log-events --log-group-name my-logs --log-stream-name 20150601 --log-events file://events
+```
+# Delete log group
+
+```sh
+aws logs delete-log-group --log-group-name "/example/basic/app2"
+```
 
 ## Ruby SDK Logs
 

@@ -4,7 +4,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 
-number_of_entries = int(os.environ.get("NENTRIES", "100"))
+number_of_entries = int(os.environ.get("NENTRIES", "500"))
 
 # Generate a random IP address
 def generate_ip():

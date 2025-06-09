@@ -6,7 +6,7 @@
 # aws logs put-log-events --log-group-name "/example/basic/app2" --log-stream-name "1749113411" --log-events file://temp_log_event.json --output json
 # Variables
 LOG_GROUP_NAME="/example/basic/app2"
-LOG_STREAM_NAME="1749113411"
+LOG_STREAM_NAME="1749266513"
 LOG_FILE="web_server_logs.log"
 SEQUENCE_TOKEN="None"
 
