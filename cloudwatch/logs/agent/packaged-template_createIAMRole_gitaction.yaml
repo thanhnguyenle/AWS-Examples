@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub OIDC Provider and IAM Role for Spring Boot Deployment
+Parameters:
+  GitHubOrganization:
+    Type: String
+    Description: GitHub organization or username
+    Default: thanhnguyenle
+  GitHubRepository:
+    Type: String
+    Description: GitHub repository name
+    Default: book-exchange-backend
+  S3BucketName:
+    Type: String
+    Description: S3 bucket for storing artifacts
+    Default: book-exchange-backend-bucket
+  EC2InstanceId:
+    Type: String
+    Description: EC2 instance ID for deployment
+    Default: i-0331ec650d94aa623
+Resources:
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Ref: S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+        - Id: DeleteOldVersions
+          Status: Enabled
+          NoncurrentVersionExpirationInDays: 30
+  GitHubIdentityProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+      - sts.amazonaws.com
+      ThumbprintList:
+      - 6938fd4d98bab03faadb97b34396831e3780aea1
+      - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: GitHubActions-${GitHubRepository}-Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated:
+              Ref: GitHubIdentityProvider
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              token.actions.githubusercontent.com:aud: sts.amazonaws.com
+            StringLike:
+              token.actions.githubusercontent.com:sub:
+                Fn::Sub: repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/main
+      Policies:
+      - PolicyName: DeploymentPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:PutObject
+            - s3:GetObject
+            - s3:DeleteObject
+            Resource:
+              Fn::Sub: ${DeploymentBucket.Arn}/*
+          - Effect: Allow
+            Action:
+            - s3:ListBucket
+            Resource:
+              Fn::GetAtt:
+              - DeploymentBucket
+              - Arn
+          - Effect: Allow
+            Action:
+            - ssm:SendCommand
+            - ssm:GetCommandInvocation
+            - ssm:DescribeCommandExecutions
+            Resource:
+            - Fn::Sub: arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2InstanceId}
+            - Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/AWS-RunShellScript
+            - Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*
+Outputs:
+  RoleArn:
+    Description: ARN of the IAM Role for GitHub Actions
+    Value:
+      Fn::GetAtt:
+      - GitHubActionsRole
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-GitHubActionsRoleArn
+  S3BucketName:
+    Description: S3 Bucket for deployments
+    Value:
+      Ref: DeploymentBucket
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-S3Bucket
+  SetupInstructions:
+    Description: GitHub Secrets to configure
+    Value:
+      Fn::Sub: "Add these secrets to your GitHub repository:\nAWS_ROLE_ARN: ${GitHubActionsRole.Arn}\n\
+        S3_BUCKET: ${DeploymentBucket}\nEC2_INSTANCE_ID: ${EC2InstanceId}"

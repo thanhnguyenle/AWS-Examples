@@ -2,7 +2,7 @@
 
 echo "== deploy ec2 instance"
 
-STACK_NAME="aws-cw-agent-app"
+STACK_NAME="aws-iam-role-gitaction"
 
 CFN_BUCKET=cw-agent-app-325252
 CFN_FILENAME=cfn
@@ -13,14 +13,14 @@ echo "== packaging CFN to S3..."
 aws cloudformation package \
 --s3-bucket $CFN_BUCKET \
 --s3-prefix ${CFN_FILENAME} \
---template-file template.yaml \
---output-template-file packaged-template.yaml
+--template-file template_createIAMRole_gitaction.yaml \
+--output-template-file packaged-template_createIAMRole_gitaction.yaml
 
 
 # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/cloudformation/deploy/index.html
 aws cloudformation deploy \
---template-file packaged-template.yaml \
+--template-file packaged-template_createIAMRole_gitaction.yaml \
 --capabilities CAPABILITY_NAMED_IAM \
 --no-execute-changeset \
---region ca-central-1 \
+--region us-east-1 \
 --stack-name $STACK_NAME

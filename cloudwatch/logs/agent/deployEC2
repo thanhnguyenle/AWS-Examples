@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+echo "== deploy ec2 instance"
+
+STACK_NAME="aws-cw-agent-app"
+
+CFN_BUCKET=cw-agent-app-325252
+CFN_FILENAME=cfn
+
+INSTANCE_TYPE="t2.micro"
+VPC_ID="vpc-01ca225c2e337426b"
+IMAGE_ID="ami-02457590d33d576c3"
+SUBNET_ID="subnet-0472bfde607a77f72"
+DATABASE_NAME="bookexchange"
+MASTER_USERNAME="dbadmin"
+MASTER_USER_PASSWORD="WOP7eyHsBJZ4OsLqlME2"  # Will be prompted or set via environment variable
+ALLOWED_CIDR_RANGE="10.0.0.0/16"
+BACKUP_RETENTION_PERIOD="1"
+GITHUB_ORGANIZATION="thanhnguyenle"
+GITHUB_REPOSITORY="book-exchange-backend"
+S3_BUCKET_NAME="book-exchange-backend-bucket"
+
+# package
+# -----------------
+echo "== packaging CFN to S3..."
+aws cloudformation package \
+--s3-bucket $CFN_BUCKET \
+--s3-prefix ${CFN_FILENAME} \
+--template-file template_createEC2.yaml \
+--output-template-file packaged-template_createEC2.yaml
+
+
+# https://awscli.amazonaws.com/v2/documentation/api/latest/reference/cloudformation/deploy/index.html
+aws cloudformation deploy \
+--template-file packaged-template_createEC2.yaml \
+--capabilities CAPABILITY_NAMED_IAM \
+--no-execute-changeset \
+--region us-east-1 \
+--stack-name $STACK_NAME \
+--parameter-overrides \
+    InstanceType="$INSTANCE_TYPE" \
+    VpcId="$VPC_ID" \
+    ImageId="$IMAGE_ID" \
+    SubnetId="$SUBNET_ID" \
+    DatabaseName="$DATABASE_NAME" \
+    MasterUsername="$MASTER_USERNAME" \
+    MasterUserPassword="$MASTER_USER_PASSWORD" \
+    AllowedCIDRRange="$ALLOWED_CIDR_RANGE" \
+    BackupRetentionPeriod="$BACKUP_RETENTION_PERIOD" \
+    GitHubOrganization="$GITHUB_ORGANIZATION" \
+    GitHubRepository="$GITHUB_REPOSITORY" \
+    S3BucketName="$S3_BUCKET_NAME" \

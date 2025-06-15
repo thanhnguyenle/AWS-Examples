@@ -1,0 +1,119 @@
+# CloudFormation template to create GitHub OIDC Provider and IAM Role
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'GitHub OIDC Provider and IAM Role for Spring Boot Deployment'
+
+Parameters:
+  GitHubOrganization:
+    Type: String
+    Description: GitHub organization or username
+    Default: thanhnguyenle
+  
+  GitHubRepository:
+    Type: String
+    Description: GitHub repository name
+    Default: book-exchange-backend
+  
+  S3BucketName:
+    Type: String
+    Description: S3 bucket for storing artifacts
+    Default: book-exchange-backend-bucket
+  
+  EC2InstanceId:
+    Type: String
+    Description: EC2 instance ID for deployment
+    Default: i-0331ec650d94aa623
+
+Resources:
+  # S3 Bucket for storing JAR files
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+  # GitHub OIDC Identity Provider
+  GitHubIdentityProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # IAM Role for GitHub Actions
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'GitHubActions-${GitHubRepository}-Role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubIdentityProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+              StringLike:
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/main'
+      Policies:
+        - PolicyName: DeploymentPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 permissions for artifact storage
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub '${DeploymentBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt DeploymentBucket.Arn
+              # SSM permissions for EC2 deployment
+              - Effect: Allow
+                Action:
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:DescribeCommandExecutions
+                Resource:
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2InstanceId}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/AWS-RunShellScript'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*'
+
+Outputs:
+  RoleArn:
+    Description: 'ARN of the IAM Role for GitHub Actions'
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsRoleArn'
+  
+  S3BucketName:
+    Description: 'S3 Bucket for deployments'
+    Value: !Ref DeploymentBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-S3Bucket'
+  
+  SetupInstructions:
+    Description: 'GitHub Secrets to configure'
+    Value: !Sub |
+      Add these secrets to your GitHub repository:
+      AWS_ROLE_ARN: ${GitHubActionsRole.Arn}
+      S3_BUCKET: ${DeploymentBucket}
+      EC2_INSTANCE_ID: ${EC2InstanceId}
