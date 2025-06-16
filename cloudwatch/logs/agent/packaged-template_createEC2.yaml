@@ -189,34 +189,46 @@ Resources:
         description: Configure CloudWatch agent on EC2 instance
         parameters:
           InstanceId:
-            type: StringList
+            type: String
+            description: EC2 Instance ID
+          ApplicationLogGroup:
+            type: String
+            description: Application Log Group Name
+          SystemLogGroup:
+            type: String
+            description: System Log Group Name
         mainSteps:
         - name: UpdateSSMAgent
           action: aws:runCommand
           inputs:
             DocumentName: AWS-UpdateSSMAgent
-            InstanceIds: '{{InstanceId}}'
+            InstanceIds:
+            - '{{InstanceId}}'
             CloudWatchOutputConfig:
-              CloudWatchLogGroupName:
-                Ref: MyLogGroup
+              CloudWatchLogGroupName: '{{SystemLogGroup}}'
               CloudWatchOutputEnabled: true
         - name: InstallCloudWatchAgent
           action: aws:runCommand
           inputs:
             DocumentName: AWS-ConfigureAWSPackage
-            InstanceIds: '{{InstanceId}}'
+            InstanceIds:
+            - '{{InstanceId}}'
             Parameters:
-              action: Install
-              name: AmazonCloudWatchAgent
-              version: latest
-              installationType: Uninstall and reinstall
-              additionalArguments: '{}'
+              action:
+              - Install
+              name:
+              - AmazonCloudWatchAgent
+              version:
+              - latest
+              installationType:
+              - Uninstall and reinstall
+              additionalArguments:
+              - '{}'
             CloudWatchOutputConfig:
-              CloudWatchLogGroupName:
-                Ref: MyLogGroup
+              CloudWatchLogGroupName: '{{SystemLogGroup}}'
               CloudWatchOutputEnabled: true
         - name: ConfigureCloudWatchAgent
-          action: aws:runShellScript
+          action: aws:runCommand
           inputs:
             DocumentName: AWS-RunShellScript
             InstanceIds:
@@ -255,10 +267,6 @@ Resources:
         - Ref: MyApplicationLogGroup
         SystemLogGroup:
         - Ref: MyLogGroup
-      Targets:
-      - Key: ParameterValues
-        Values:
-        - Ref: MyEC2Instance
   SG:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -305,23 +313,78 @@ Resources:
     Properties:
       Roles:
       - Ref: SSMRole
-  DeploymentBucket:
-    Type: AWS::S3::Bucket
+  S3CheckerLambdaRole:
+    Type: AWS::IAM::Role
     Properties:
-      BucketName:
-        Ref: S3BucketName
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-        - Id: DeleteOldVersions
-          Status: Enabled
-          NoncurrentVersionExpirationInDays: 30
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: S3CheckPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:HeadBucket
+            - s3:ListBucket
+            - s3:GetBucketLocation
+            Resource:
+              Fn::Sub: arn:aws:s3:::${S3BucketName}
+  CreateS3ByLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-s3-bucket-checker
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - S3CheckerLambdaRole
+        - Arn
+      Timeout: 60
+      Code:
+        ZipFile: "import boto3\nimport json\nimport cfnresponse\n\ndef lambda_handler(event,\
+          \ context):\n    s3_client = boto3.client('s3')\n    bucket_name = event['ResourceProperties']['BucketName']\n\
+          \    \n    try:\n        # Check if bucket exists\n        try:\n      \
+          \      s3_client.head_bucket(Bucket=bucket_name)\n            print(f\"\
+          Bucket {bucket_name} already exists.\")\n        except s3_client.exceptions.ClientError\
+          \ as e:\n            error_code = int(e.response['Error']['Code'])\n   \
+          \         if error_code == 404:\n                print(f\"Bucket {bucket_name}\
+          \ does not exist. Creating...\")\n                s3_client.create_bucket(\n\
+          \                    Bucket=bucket_name,\n                    CreateBucketConfiguration={'LocationConstraint':\
+          \ context.invoked_function_arn.split(\":\")[3]}\n                )\n   \
+          \             print(f\"Bucket {bucket_name} created successfully.\")\n \
+          \                print(\"Bucket created.\")\n\n                # Block public\
+          \ access\n                s3.put_public_access_block(\n                \
+          \    Bucket=bucket_name,\n                    PublicAccessBlockConfiguration={\n\
+          \                        'BlockPublicAcls': True,\n                    \
+          \    'IgnorePublicAcls': True,\n                        'BlockPublicPolicy':\
+          \ True,\n                        'RestrictPublicBuckets': True\n       \
+          \             }\n                )\n\n                # Enable versioning\n\
+          \                s3.put_bucket_versioning(\n                    Bucket=bucket_name,\n\
+          \                    VersioningConfiguration={'Status': 'Enabled'}\n   \
+          \             )\n\n                # Add lifecycle rule\n              \
+          \  s3.put_bucket_lifecycle_configuration(\n                    Bucket=bucket_name,\n\
+          \                    LifecycleConfiguration={\n                        'Rules':\
+          \ [\n                            {\n                                'ID':\
+          \ 'DeleteOldVersions',\n                                'Status': 'Enabled',\n\
+          \                                'NoncurrentVersionExpiration': {\n    \
+          \                                'NoncurrentDays': 30\n                \
+          \                }\n                            }\n                    \
+          \    ]\n                    }\n                )\n        \n        response_data\
+          \ = {\n            'BucketName': bucket_name,\n            'BucketCreated':\
+          \ 'true'\n        }\n        cfnresponse.send(event, context, cfnresponse.SUCCESS,\
+          \ response_data)\n    \n    except Exception as e:\n        print(f\"Error:\
+          \ {str(e)}\")\n        response_data = {\n            'Error': str(e),\n\
+          \            'BucketCreated': 'false'\n        }\n        cfnresponse.send(event,\
+          \ context, cfnresponse.FAILED, response_data)\n"
   GitHubIdentityProvider:
     Type: AWS::IAM::OIDCProvider
     Properties:
@@ -361,14 +424,12 @@ Resources:
             - s3:GetObject
             - s3:DeleteObject
             Resource:
-              Fn::Sub: ${DeploymentBucket.Arn}/*
+              Fn::Sub: arn:aws:s3:::${S3BucketName}/*
           - Effect: Allow
             Action:
             - s3:ListBucket
             Resource:
-              Fn::GetAtt:
-              - DeploymentBucket
-              - Arn
+              Fn::Sub: arn:aws:s3:::${S3BucketName}
           - Effect: Allow
             Action:
             - ssm:SendCommand
@@ -463,12 +524,22 @@ Outputs:
   S3BucketName:
     Description: S3 Bucket for deployments
     Value:
-      Ref: DeploymentBucket
+      Ref: S3BucketName
     Export:
       Name:
         Fn::Sub: ${AWS::StackName}-S3Bucket
+  S3BucketExists:
+    Description: Whether S3 bucket already existed
+    Value:
+      Fn::GetAtt:
+      - CreateS3ByLambdaFunction
+      - BucketExists
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-S3BucketExists
   SetupInstructions:
     Description: GitHub Secrets to configure
     Value:
       Fn::Sub: "Add these secrets to your GitHub repository:\nAWS_ROLE_ARN: ${GitHubActionsRole.Arn}\n\
-        S3_BUCKET: ${DeploymentBucket}\nEC2_INSTANCE_ID: ${MyEC2Instance}"
+        S3_BUCKET: ${S3BucketName}\nEC2_INSTANCE_ID: ${MyEC2Instance}\n\nS3 Bucket\
+        \ Status:\n- Bucket existed before deployment: ${CreateS3ByLambdaFunction.BucketExists}"
