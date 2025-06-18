@@ -1,20 +1,20 @@
-AWSTemplateFormatVersion: "2010-09-09"
-Description: "EC2 instance with CloudWatch agent setup"
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EC2 instance with CloudWatch agent setup
 
 Parameters:
   InstanceType:
     Type: String
     Default: t2.micro
-  
+
   VpcId:
     Type: String
     Default: vpc-01ca225c2e337426b
-  
+
   ImageId:
     Type: String
     # us-east-1 AMI
     Default: ami-02457590d33d576c3
-  
+
   SubnetId:
     Type: String
     Default: subnet-0472bfde607a77f72
@@ -22,30 +22,33 @@ Parameters:
   SubnetId2:
     Type: String
     Default: subnet-0dcd00e3ccc9f2f45
-  
+
   DatabaseName:
     Type: String
     Default: bookexchange
     Description: Initial database name to create
-    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]*$"
-    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters and underscores
-  
+    AllowedPattern: ^[a-zA-Z][a-zA-Z0-9_]*$
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric
+      characters and underscores
+
   MasterUsername:
     Type: String
     Default: dbadmin
     Description: Master username for the database
-    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]*$"
-    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters and underscores
-  
+    AllowedPattern: ^[a-zA-Z][a-zA-Z0-9_]*$
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric
+      characters and underscores
+
   MasterUserPassword:
     Type: String
     NoEcho: true
     Description: Master user password for the database
     MinLength: 8
     MaxLength: 64
-    AllowedPattern: "[a-zA-Z0-9@#$%^&+=]*"
-    ConstraintDescription: Must be at least 8 characters long and contain at least one letter and one number
-  
+    AllowedPattern: '[a-zA-Z0-9@#$%^&+=]*'
+    ConstraintDescription: Must be at least 8 characters long and contain at least
+      one letter and one number
+
   AllowedCIDRRange:
     Type: String
     Default: 10.0.0.0/16
@@ -62,12 +65,12 @@ Parameters:
     Type: String
     Description: GitHub organization or username
     Default: thanhnguyenle
-  
+
   GitHubRepository:
     Type: String
     Description: GitHub repository name
     Default: book-exchange-backend
-  
+
   S3BucketName:
     Type: String
     Description: S3 bucket for storing artifacts
@@ -84,11 +87,11 @@ Resources:
         - !Ref SubnetId2
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-db-subnet-group"
+          Value: !Sub '${AWS::StackName}-db-subnet-group'
         - Key: Environment
           Value: dev-test
 
-   # Security Group for RDS
+  # Security Group for RDS
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -98,70 +101,70 @@ Resources:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          SourceSecurityGroupId: !Ref SG  # Allow access from EC2 security group
+          SourceSecurityGroupId: !Ref SG # Allow access from EC2 security group
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Ref AllowedCIDRRange
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-db-security-group"
+          Value: !Sub '${AWS::StackName}-db-security-group'
         - Key: Environment
           Value: dev-test
 
-   # RDS Instance - Free Tier Configuration
+  # RDS Instance - Free Tier Configuration
   RDSInstance:
     Type: AWS::RDS::DBInstance
-    DeletionPolicy: Delete  # For dev/test - change to Snapshot for production
+    DeletionPolicy: Delete # For dev/test - change to Snapshot for production
     Properties:
       # Free Tier Specifications
-      DBInstanceClass: db.t3.micro  # Free tier eligible
-      AllocatedStorage: 20          # Free tier: up to 20GB
-      StorageType: gp2              # General Purpose SSD
-      
+      DBInstanceClass: db.t3.micro # Free tier eligible
+      AllocatedStorage: 20 # Free tier: up to 20GB
+      StorageType: gp2 # General Purpose SSD
+
       # Database Configuration
       Engine: MySQL
       EngineVersion: 8.0.35
       DBName: !Ref DatabaseName
       MasterUsername: !Ref MasterUsername
       MasterUserPassword: !Ref MasterUserPassword
-      
+
       # Network Configuration
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref DBSecurityGroup
-      PubliclyAccessible: false     # Keep private for security
-      
+      PubliclyAccessible: false # Keep private for security
+
       # Backup Configuration (Free Tier Limits)
       BackupRetentionPeriod: !Ref BackupRetentionPeriod
-      PreferredBackupWindow: "03:00-04:00"    # UTC
-      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"  # UTC
-      
+      PreferredBackupWindow: 03:00-04:00 # UTC
+      PreferredMaintenanceWindow: sun:04:00-sun:05:00 # UTC
+
       # Performance and Monitoring
-      MonitoringInterval: 0         # No enhanced monitoring (costs extra)
-      EnablePerformanceInsights: false  # Costs extra
-      
+      MonitoringInterval: 0 # No enhanced monitoring (costs extra)
+      EnablePerformanceInsights: false # Costs extra
+
       # Storage
-      StorageEncrypted: true        # Always encrypt
-      
+      StorageEncrypted: true # Always encrypt
+
       # Maintenance
       AutoMinorVersionUpgrade: true
-      DeletionProtection: false     # For dev/test - enable for production
-      
+      DeletionProtection: false # For dev/test - enable for production
+
       # Parameter Group (optional - using default)
       # DBParameterGroupName: default.mysql8.0
-      
+
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-mysql-db"
+          Value: !Sub '${AWS::StackName}-mysql-db'
         - Key: Environment
           Value: dev-test
         - Key: Purpose
           Value: development-testing
-      
-  MyEC2Instance: 
+
+  MyEC2Instance:
     Type: AWS::EC2::Instance
-    Properties: 
+    Properties:
       IamInstanceProfile: !Ref EC2InstanceProfile
       InstanceType: !Ref InstanceType
       ImageId: !Ref ImageId
@@ -172,56 +175,52 @@ Resources:
           GroupSet:
             - !GetAtt SG.GroupId
           DeleteOnTermination: true
-      UserData:
-        Fn::Base64: |
-          #!/bin/bash
-          yum update -yum -y
+      UserData: !Base64 |
+        #!/bin/bash
+        yum update -yum -y
 
-          # Install Java 21
-          yum install -y java-21-amazon-corretto-headless
-          
-          # Add JAVA_HOME to user profiles
-          echo 'export JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto' >> ~/.bashrc
-          source ~/.bashrc
+        # Install Java 21
+        yum install -y java-21-amazon-corretto-headless
 
-          # Install nginx
-          dnf install nginx -y
-          systemctl enable nginx && systemctl start nginx
-          
-          # Create initial log file
-          echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  [main] Application initialized via UserData" > /home/ec2-user/application.log
-          chown ec2-user:ec2-user /home/ec2-user/application.log
-          
-          # Signal CloudFormation success
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName}
-    CreationPolicy:
-      ResourceSignal:
-        Count: 1
-        Timeout: PT10M
+        # Add JAVA_HOME to user profiles
+        echo 'export JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto' >> ~/.bashrc
+        source ~/.bashrc
+
+        # Install nginx
+        dnf install nginx -y
+        systemctl enable nginx && systemctl start nginx
+
+        # Create initial log file
+        echo "$(date '+%Y-%m-%d %H:%M:%S') INFO  [main] Application initialized via UserData" > /home/ec2-user/application.log
+        chown ec2-user:ec2-user /home/ec2-user/application.log
+
+        # Signal CloudFormation success
+        # /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName}
+    # CreationPolicy:
+    #   ResourceSignal:
+    #     Count: 1
+    #     Timeout: PT10M
 
   MyLogGroup:
     Type: AWS::Logs::LogGroup
-    Properties: 
-      LogGroupName: !Sub "/aws/ec2/${AWS::StackName}/system"
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}/system'
       RetentionInDays: 7
 
   MyApplicationLogGroup:
     Type: AWS::Logs::LogGroup
-    Properties: 
-      LogGroupName: !Sub "/aws/ec2/${AWS::StackName}/application"
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}/application'
       RetentionInDays: 14
 
   ConfigureCloudWatchDocument:
     Type: AWS::SSM::Document
     Properties:
-      DocumentType: Automation
+      DocumentType: Command
       Content:
-        schemaVersion: '0.3'
-        description: 'Configure CloudWatch agent on EC2 instance'
+        schemaVersion: '2.2'
+        description: Configure CloudWatch agent on EC2 instance
         parameters:
-          InstanceId:
-            type: String
-            description: EC2 Instance ID
           ApplicationLogGroup:
             type: String
             description: Application Log Group Name
@@ -229,48 +228,48 @@ Resources:
             type: String
             description: System Log Group Name
         mainSteps:
-        - name: UpdateSSMAgent
-          action: 'aws:runCommand'
-          inputs:
-            DocumentName: AWS-UpdateSSMAgent
-            InstanceIds: 
-              - "{{InstanceId}}"
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: "{{SystemLogGroup}}"
-              CloudWatchOutputEnabled: true
-              
-        - name: InstallCloudWatchAgent
-          action: 'aws:runCommand'
-          inputs:
-            DocumentName: AWS-ConfigureAWSPackage
-            InstanceIds: 
-              - "{{InstanceId}}"
-            Parameters:
-              action: 
-                - 'Install'
-              name: 
-                - 'AmazonCloudWatchAgent'
-              version: 
-                - 'latest'
-              installationType: 
-                - 'Uninstall and reinstall'
-              additionalArguments: 
-                - "{}"
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: "{{SystemLogGroup}}"
-              CloudWatchOutputEnabled: true
-              
-        - name: ConfigureCloudWatchAgent
-          action: 'aws:runCommand'
-          inputs:
-            DocumentName: AWS-RunShellScript
-            InstanceIds: 
-              - "{{InstanceId}}"
-            Parameters:
-              commands:
+          - action: aws:runShellScript
+            name: ConfigureCloudWatchAgent
+            inputs:
+              # DocumentName: AWS-UpdateSSMAgent
+              # InstanceIds:
+              #   - '{{InstanceId}}'
+              # CloudWatchOutputConfig:
+              #   CloudWatchLogGroupName: '{{SystemLogGroup}}'
+              #   CloudWatchOutputEnabled: true
+
+          # - name: InstallCloudWatchAgent
+          #   action: aws:runCommand
+          #   inputs:
+          #     DocumentName: AWS-ConfigureAWSPackage
+          #     InstanceIds:
+          #       - '{{InstanceId}}'
+          #     Parameters:
+          #       action:
+          #         - Install
+          #       name:
+          #         - AmazonCloudWatchAgent
+          #       version:
+          #         - latest
+          #       installationType:
+          #         - Uninstall and reinstall
+          #       additionalArguments:
+          #         - '{}'
+          #     CloudWatchOutputConfig:
+          #       CloudWatchLogGroupName: '{{SystemLogGroup}}'
+          #       CloudWatchOutputEnabled: true
+
+              runCommand:
                 - |
+                  # Update SSM Agent
+                  sudo yum update -y amazon-ssm-agent
+
+                  # Install CloudWatch Agent
+                  sudo yum install -y amazon-cloudwatch-agent
+
                   # Create CloudWatch agent configuration
-                  cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
+                  sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+                  sudo cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
                   {
                       "agent": {
                           "metrics_collection_interval": 60,
@@ -282,7 +281,7 @@ Resources:
                                   "collect_list": [
                                       {
                                           "file_path": "/home/ec2-user/application.log",
-                                          "log_group_name": "{{ApplicationLogGroup}}",
+                                          "log_group_name": "{{ ApplicationLogGroup }}",
                                           "log_stream_name": "{instance_id}/application/main",
                                           "timezone": "UTC",
                                           "multi_line_start_pattern": "^\\\\d{4}-\\\\d{2}-\\\\d{2}\\\\s\\\\d{2}:\\\\d{2}:\\\\d{2}"
@@ -294,32 +293,37 @@ Resources:
                       }
                   }
                   EOF
-                  
+
                   # Start CloudWatch agent
-                  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+                  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
                     -a fetch-config \
                     -m ec2 \
                     -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
                     -s
-                  
+
                   # Verify installation
-                  systemctl status amazon-cloudwatch-agent
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: "{{SystemLogGroup}}"
-              CloudWatchOutputEnabled: true
+                  sudo systemctl status amazon-cloudwatch-agent
 
   InstallCloudWatchAgentExecution:
     Type: AWS::SSM::Association
-    DependsOn: MyEC2Instance
     Properties:
       Name: !Ref ConfigureCloudWatchDocument
+      Targets:
+        - Key: InstanceIds
+          Values:
+            - !Ref MyEC2Instance
       Parameters:
-        InstanceId: 
-          - !Ref MyEC2Instance
-        ApplicationLogGroup: 
+        ApplicationLogGroup:
           - !Ref MyApplicationLogGroup
-        SystemLogGroup: 
+        SystemLogGroup:
           - !Ref MyLogGroup
+      WaitForSuccessTimeoutSeconds: 300
+      AssociationName: !Sub "${AWS::StackName}-CloudWatchAgentAssociation"
+    DependsOn:
+      - MyEC2Instance
+      - MyLogGroup
+      - MyApplicationLogGroup
+      - ConfigureCloudWatchDocument
 
   SG:
     Type: AWS::EC2::SecurityGroup
@@ -330,21 +334,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref AllowedCIDRRange
+          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: !Ref AllowedCIDRRange # Allows HTTPS access
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: !Ref AllowedCIDRRange  # Allows only HTTPS outbound traffic
-        - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
-          CidrIp: !Ref AllowedCIDRRange
-
+          CidrIp: 0.0.0.0/0
 
   SSMRole:
     Type: AWS::IAM::Role
@@ -363,6 +357,7 @@ Resources:
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-CloudWatchAgent-InstanceProfile'
       Roles:
         - !Ref SSMRole
 
@@ -389,7 +384,7 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource: !Sub 'arn:aws:s3:::${S3BucketName}'
-  
+
   # Lambda function to check if S3 bucket exists
   CreateS3ByLambdaFunction:
     Type: AWS::Lambda::Function
@@ -408,7 +403,7 @@ Resources:
           def lambda_handler(event, context):
               s3_client = boto3.client('s3')
               bucket_name = event['ResourceProperties']['BucketName']
-              
+
               try:
                   # Check if bucket exists
                   try:
@@ -457,13 +452,13 @@ Resources:
                                   ]
                               }
                           )
-                  
+
                   response_data = {
                       'BucketName': bucket_name,
                       'BucketCreated': 'true'
                   }
                   cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
-              
+
               except Exception as e:
                   print(f"Error: {str(e)}")
                   response_data = {
@@ -471,7 +466,6 @@ Resources:
                       'BucketCreated': 'false'
                   }
                   cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
-
 
   # # Custom resource to invoke the Lambda function
   # S3BucketChecker:
@@ -560,63 +554,63 @@ Resources:
 
 Outputs:
   InstanceId:
-    Description: "EC2 Instance ID"
+    Description: EC2 Instance ID
     Value: !Ref MyEC2Instance
     Export:
-      Name: !Sub "${AWS::StackName}-InstanceId"
+      Name: !Sub '${AWS::StackName}-InstanceId'
 
   ConfigureCommand:
-    Description: "Command to configure CloudWatch agent"
+    Description: Command to configure CloudWatch agent
     Value: !Sub |
       aws ssm start-automation-execution \
         --document-name "${ConfigureCloudWatchDocument}" \
         --parameters "InstanceId=${MyEC2Instance}"
 
   RDSInstanceId:
-    Description: "RDS Instance ID"
+    Description: RDS Instance ID
     Value: !Ref RDSInstance
     Export:
-      Name: !Sub "${AWS::StackName}-RDSInstanceId"
-      
+      Name: !Sub '${AWS::StackName}-RDSInstanceId'
+
   RDSEndpoint:
-    Description: "RDS Instance Endpoint"
+    Description: RDS Instance Endpoint
     Value: !GetAtt RDSInstance.Endpoint.Address
     Export:
-      Name: !Sub "${AWS::StackName}-RDSEndpoint"
-      
+      Name: !Sub '${AWS::StackName}-RDSEndpoint'
+
   RDSPort:
-    Description: "RDS Instance Port"
+    Description: RDS Instance Port
     Value: !GetAtt RDSInstance.Endpoint.Port
     Export:
-      Name: !Sub "${AWS::StackName}-RDSPort"
-      
+      Name: !Sub '${AWS::StackName}-RDSPort'
+
   DatabaseName:
-    Description: "Database Name"
+    Description: Database Name
     Value: !Ref DatabaseName
     Export:
-      Name: !Sub "${AWS::StackName}-DatabaseName"
-      
+      Name: !Sub '${AWS::StackName}-DatabaseName'
+
   MasterUsername:
-    Description: "Database Master Username"
+    Description: Database Master Username
     Value: !Ref MasterUsername
     Export:
-      Name: !Sub "${AWS::StackName}-MasterUsername"
-      
+      Name: !Sub '${AWS::StackName}-MasterUsername'
+
   JDBCConnectionString:
-    Description: "JDBC Connection String"
-    Value: !Sub "jdbc:mysql://${RDSInstance.Endpoint.Address}:${RDSInstance.Endpoint.Port}/${DatabaseName}"
+    Description: JDBC Connection String
+    Value: !Sub 'jdbc:mysql://${RDSInstance.Endpoint.Address}:${RDSInstance.Endpoint.Port}/${DatabaseName}'
     Export:
-      Name: !Sub "${AWS::StackName}-JDBCConnectionString"
-      
+      Name: !Sub '${AWS::StackName}-JDBCConnectionString'
+
   SecurityGroupId:
-    Description: "Security Group ID for EC2 instances to access RDS"
+    Description: Security Group ID for EC2 instances to access RDS
     Value: !Ref DBSecurityGroup
     Export:
-      Name: !Sub "${AWS::StackName}-DBSecurityGroupId"
+      Name: !Sub '${AWS::StackName}-DBSecurityGroupId'
 
   # Connection Instructions
   ConnectionInstructions:
-    Description: "How to connect to the database"
+    Description: How to connect to the database
     Value: !Sub |
       Connect using:
       Host: ${RDSInstance.Endpoint.Address}
@@ -624,34 +618,25 @@ Outputs:
       Database: ${DatabaseName}
       Username: ${MasterUsername}
       Password: [The password you provided]
-      
+
       MySQL CLI: mysql -h ${RDSInstance.Endpoint.Address} -P ${RDSInstance.Endpoint.Port} -u ${MasterUsername} -p ${DatabaseName}
 
   RoleArn:
-    Description: 'ARN of the IAM Role for GitHub Actions'
+    Description: ARN of the IAM Role for GitHub Actions
     Value: !GetAtt GitHubActionsRole.Arn
     Export:
       Name: !Sub '${AWS::StackName}-GitHubActionsRoleArn'
-  
+
   S3BucketName:
-    Description: 'S3 Bucket for deployments'
+    Description: S3 Bucket for deployments
     Value: !Ref S3BucketName
     Export:
       Name: !Sub '${AWS::StackName}-S3Bucket'
-  
-  S3BucketExists:
-    Description: 'Whether S3 bucket already existed'
-    Value: !GetAtt CreateS3ByLambdaFunction.BucketExists
-    Export:
-      Name: !Sub '${AWS::StackName}-S3BucketExists'
-  
+
   SetupInstructions:
-    Description: 'GitHub Secrets to configure'
+    Description: GitHub Secrets to configure
     Value: !Sub |
       Add these secrets to your GitHub repository:
       AWS_ROLE_ARN: ${GitHubActionsRole.Arn}
       S3_BUCKET: ${S3BucketName}
       EC2_INSTANCE_ID: ${MyEC2Instance}
-      
-      S3 Bucket Status:
-      - Bucket existed before deployment: ${CreateS3ByLambdaFunction.BucketExists}

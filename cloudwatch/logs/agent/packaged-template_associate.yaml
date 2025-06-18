@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template to configure CloudWatch Agent on existing EC2 instance
+Parameters:
+  EC2INSTANCEID:
+    Type: String
+    Default: i-06406c9bdd190215c
+    Description: EC2 Instance ID (must already be registered with SSM)
+Resources:
+  ConfigureCloudWatchDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Content:
+        schemaVersion: '2.2'
+        description: Configure CloudWatch agent on EC2 instance
+        parameters:
+          ApplicationLogGroup:
+            type: String
+            description: Application Log Group Name
+          SystemLogGroup:
+            type: String
+            description: System Log Group Name
+        mainSteps:
+        - action: aws:runShellScript
+          name: ConfigureCloudWatchAgent
+          inputs:
+            runCommand:
+            - "# Update SSM Agent\nsudo yum update -y amazon-ssm-agent\n\n# Install\
+              \ CloudWatch Agent\nsudo yum install -y amazon-cloudwatch-agent\n\n\
+              # Create CloudWatch agent configuration\nsudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc\n\
+              sudo cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
+              \ << EOF\n{\n    \"agent\": {\n        \"metrics_collection_interval\"\
+              : 60,\n        \"run_as_user\": \"cwagent\"\n    },\n    \"logs\": {\n\
+              \        \"logs_collected\": {\n            \"files\": {\n         \
+              \       \"collect_list\": [\n                    {\n               \
+              \         \"file_path\": \"/home/ec2-user/application.log\",\n     \
+              \                   \"log_group_name\": \"{{ ApplicationLogGroup }}\"\
+              ,\n                        \"log_stream_name\": \"{instance_id}/application/main\"\
+              ,\n                        \"timezone\": \"UTC\",\n                \
+              \        \"multi_line_start_pattern\": \"^\\\\\\\\d{4}-\\\\\\\\d{2}-\\\
+              \\\\\\d{2}\\\\\\\\s\\\\\\\\d{2}:\\\\\\\\d{2}:\\\\\\\\d{2}\"\n      \
+              \              }\n                ]\n            }\n        },\n   \
+              \     \"log_stream_name\": \"{instance_id}\"\n    }\n}\nEOF\n\n# Start\
+              \ CloudWatch agent\nsudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl\
+              \ \\\n  -a fetch-config \\\n  -m ec2 \\\n  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
+              \ \\\n  -s\n\n# Verify installation\nsudo systemctl status amazon-cloudwatch-agent\n"
+  MyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/ec2/${AWS::StackName}/system
+      RetentionInDays: 7
+  MyApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/ec2/${AWS::StackName}/application
+      RetentionInDays: 14
+  InstallCloudWatchAgentExecution:
+    Type: AWS::SSM::Association
+    Properties:
+      Name:
+        Ref: ConfigureCloudWatchDocument
+      Targets:
+      - Key: InstanceIds
+        Values:
+        - Fn::Sub: ${EC2INSTANCEID}
+      Parameters:
+        ApplicationLogGroup:
+        - Ref: MyApplicationLogGroup
+        SystemLogGroup:
+        - Ref: MyLogGroup
+      WaitForSuccessTimeoutSeconds: 300
+      AssociationName:
+        Fn::Sub: ${AWS::StackName}-CloudWatchAgentAssociation
+    DependsOn:
+    - MyLogGroup
+    - MyApplicationLogGroup
+    - ConfigureCloudWatchDocument
+Outputs:
+  SystemLogGroupName:
+    Description: Name of the System Log Group
+    Value:
+      Ref: MyLogGroup
+  ApplicationLogGroupName:
+    Description: Name of the Application Log Group
+    Value:
+      Ref: MyApplicationLogGroup
+  SSMDocumentName:
+    Description: Name of the SSM Document
+    Value:
+      Ref: ConfigureCloudWatchDocument
