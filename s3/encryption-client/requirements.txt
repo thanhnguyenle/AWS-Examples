@@ -1,0 +1,12 @@
+# AWS SDK for Python
+boto3>=1.26.0
+
+# AWS Core library (automatically installed with boto3, but pinning version)
+botocore>=1.29.0
+
+# Cryptography library for Fernet encryption
+cryptography>=3.4.8
+
+# Optional: For better performance and additional crypto features
+# cffi>=1.15.0
+# pycparser>=2.21

@@ -162,12 +162,8 @@ Resources:
           \ nginx && systemctl start nginx\n\n# Create initial log file\necho \"$(date\
           \ '+%Y-%m-%d %H:%M:%S') INFO  [main] Application initialized via UserData\"\
           \ > /home/ec2-user/application.log\nchown ec2-user:ec2-user /home/ec2-user/application.log\n\
-          \n# Signal CloudFormation success\n/opt/aws/bin/cfn-signal -e $? --stack\
+          \n# Signal CloudFormation success\n# /opt/aws/bin/cfn-signal -e $? --stack\
           \ ${AWS::StackName}\n"
-    CreationPolicy:
-      ResourceSignal:
-        Count: 1
-        Timeout: PT10M
   MyLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -183,14 +179,11 @@ Resources:
   ConfigureCloudWatchDocument:
     Type: AWS::SSM::Document
     Properties:
-      DocumentType: Automation
+      DocumentType: Command
       Content:
-        schemaVersion: '0.3'
+        schemaVersion: '2.2'
         description: Configure CloudWatch agent on EC2 instance
         parameters:
-          InstanceId:
-            type: String
-            description: EC2 Instance ID
           ApplicationLogGroup:
             type: String
             description: Application Log Group Name
@@ -198,75 +191,51 @@ Resources:
             type: String
             description: System Log Group Name
         mainSteps:
-        - name: UpdateSSMAgent
-          action: aws:runCommand
+        - action: aws:runShellScript
+          name: ConfigureCloudWatchAgent
           inputs:
-            DocumentName: AWS-UpdateSSMAgent
-            InstanceIds:
-            - '{{InstanceId}}'
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: '{{SystemLogGroup}}'
-              CloudWatchOutputEnabled: true
-        - name: InstallCloudWatchAgent
-          action: aws:runCommand
-          inputs:
-            DocumentName: AWS-ConfigureAWSPackage
-            InstanceIds:
-            - '{{InstanceId}}'
-            Parameters:
-              action:
-              - Install
-              name:
-              - AmazonCloudWatchAgent
-              version:
-              - latest
-              installationType:
-              - Uninstall and reinstall
-              additionalArguments:
-              - '{}'
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: '{{SystemLogGroup}}'
-              CloudWatchOutputEnabled: true
-        - name: ConfigureCloudWatchAgent
-          action: aws:runCommand
-          inputs:
-            DocumentName: AWS-RunShellScript
-            InstanceIds:
-            - '{{InstanceId}}'
-            Parameters:
-              commands:
-              - "# Create CloudWatch agent configuration\ncat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
-                \ << EOF\n{\n    \"agent\": {\n        \"metrics_collection_interval\"\
-                : 60,\n        \"run_as_user\": \"cwagent\"\n    },\n    \"logs\"\
-                : {\n        \"logs_collected\": {\n            \"files\": {\n   \
-                \             \"collect_list\": [\n                    {\n       \
-                \                 \"file_path\": \"/home/ec2-user/application.log\"\
-                ,\n                        \"log_group_name\": \"{{ApplicationLogGroup}}\"\
-                ,\n                        \"log_stream_name\": \"{instance_id}/application/main\"\
-                ,\n                        \"timezone\": \"UTC\",\n              \
-                \          \"multi_line_start_pattern\": \"^\\\\\\\\d{4}-\\\\\\\\\
-                d{2}-\\\\\\\\d{2}\\\\\\\\s\\\\\\\\d{2}:\\\\\\\\d{2}:\\\\\\\\d{2}\"\
-                \n                    }\n                ]\n            }\n      \
-                \  },\n        \"log_stream_name\": \"{instance_id}\"\n    }\n}\n\
-                EOF\n\n# Start CloudWatch agent\n/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl\
-                \ \\\n  -a fetch-config \\\n  -m ec2 \\\n  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
-                \ \\\n  -s\n\n# Verify installation\nsystemctl status amazon-cloudwatch-agent\n"
-            CloudWatchOutputConfig:
-              CloudWatchLogGroupName: '{{SystemLogGroup}}'
-              CloudWatchOutputEnabled: true
+            runCommand:
+            - "# Update SSM Agent\nsudo yum update -y amazon-ssm-agent\n\n# Install\
+              \ CloudWatch Agent\nsudo yum install -y amazon-cloudwatch-agent\n\n\
+              # Create CloudWatch agent configuration\nsudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc\n\
+              sudo cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
+              \ << EOF\n{\n    \"agent\": {\n        \"metrics_collection_interval\"\
+              : 60,\n        \"run_as_user\": \"cwagent\"\n    },\n    \"logs\": {\n\
+              \        \"logs_collected\": {\n            \"files\": {\n         \
+              \       \"collect_list\": [\n                    {\n               \
+              \         \"file_path\": \"/home/ec2-user/application.log\",\n     \
+              \                   \"log_group_name\": \"{{ ApplicationLogGroup }}\"\
+              ,\n                        \"log_stream_name\": \"{instance_id}/application/main\"\
+              ,\n                        \"timezone\": \"UTC\",\n                \
+              \        \"multi_line_start_pattern\": \"^\\\\\\\\d{4}-\\\\\\\\d{2}-\\\
+              \\\\\\d{2}\\\\\\\\s\\\\\\\\d{2}:\\\\\\\\d{2}:\\\\\\\\d{2}\"\n      \
+              \              }\n                ]\n            }\n        },\n   \
+              \     \"log_stream_name\": \"{instance_id}\"\n    }\n}\nEOF\n\n# Start\
+              \ CloudWatch agent\nsudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl\
+              \ \\\n  -a fetch-config \\\n  -m ec2 \\\n  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json\
+              \ \\\n  -s\n\n# Verify installation\nsudo systemctl status amazon-cloudwatch-agent\n"
   InstallCloudWatchAgentExecution:
     Type: AWS::SSM::Association
-    DependsOn: MyEC2Instance
     Properties:
       Name:
         Ref: ConfigureCloudWatchDocument
-      Parameters:
-        InstanceId:
+      Targets:
+      - Key: InstanceIds
+        Values:
         - Ref: MyEC2Instance
+      Parameters:
         ApplicationLogGroup:
         - Ref: MyApplicationLogGroup
         SystemLogGroup:
         - Ref: MyLogGroup
+      WaitForSuccessTimeoutSeconds: 300
+      AssociationName:
+        Fn::Sub: ${AWS::StackName}-CloudWatchAgentAssociation
+    DependsOn:
+    - MyEC2Instance
+    - MyLogGroup
+    - MyApplicationLogGroup
+    - ConfigureCloudWatchDocument
   SG:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -277,24 +246,11 @@ Resources:
       - IpProtocol: tcp
         FromPort: 22
         ToPort: 22
-        CidrIp:
-          Ref: AllowedCIDRRange
+        CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 443
         ToPort: 443
-        CidrIp:
-          Ref: AllowedCIDRRange
-      SecurityGroupEgress:
-      - IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
-        CidrIp:
-          Ref: AllowedCIDRRange
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        CidrIp:
-          Ref: AllowedCIDRRange
+        CidrIp: 0.0.0.0/0
   SSMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -311,6 +267,8 @@ Resources:
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
+      InstanceProfileName:
+        Fn::Sub: ${AWS::StackName}-CloudWatchAgent-InstanceProfile
       Roles:
       - Ref: SSMRole
   S3CheckerLambdaRole:
@@ -352,9 +310,9 @@ Resources:
       Code:
         ZipFile: "import boto3\nimport json\nimport cfnresponse\n\ndef lambda_handler(event,\
           \ context):\n    s3_client = boto3.client('s3')\n    bucket_name = event['ResourceProperties']['BucketName']\n\
-          \    \n    try:\n        # Check if bucket exists\n        try:\n      \
-          \      s3_client.head_bucket(Bucket=bucket_name)\n            print(f\"\
-          Bucket {bucket_name} already exists.\")\n        except s3_client.exceptions.ClientError\
+          \n    try:\n        # Check if bucket exists\n        try:\n           \
+          \ s3_client.head_bucket(Bucket=bucket_name)\n            print(f\"Bucket\
+          \ {bucket_name} already exists.\")\n        except s3_client.exceptions.ClientError\
           \ as e:\n            error_code = int(e.response['Error']['Code'])\n   \
           \         if error_code == 404:\n                print(f\"Bucket {bucket_name}\
           \ does not exist. Creating...\")\n                s3_client.create_bucket(\n\
@@ -378,10 +336,10 @@ Resources:
           \                                'NoncurrentVersionExpiration': {\n    \
           \                                'NoncurrentDays': 30\n                \
           \                }\n                            }\n                    \
-          \    ]\n                    }\n                )\n        \n        response_data\
+          \    ]\n                    }\n                )\n\n        response_data\
           \ = {\n            'BucketName': bucket_name,\n            'BucketCreated':\
           \ 'true'\n        }\n        cfnresponse.send(event, context, cfnresponse.SUCCESS,\
-          \ response_data)\n    \n    except Exception as e:\n        print(f\"Error:\
+          \ response_data)\n\n    except Exception as e:\n        print(f\"Error:\
           \ {str(e)}\")\n        response_data = {\n            'Error': str(e),\n\
           \            'BucketCreated': 'false'\n        }\n        cfnresponse.send(event,\
           \ context, cfnresponse.FAILED, response_data)\n"
@@ -528,18 +486,8 @@ Outputs:
     Export:
       Name:
         Fn::Sub: ${AWS::StackName}-S3Bucket
-  S3BucketExists:
-    Description: Whether S3 bucket already existed
-    Value:
-      Fn::GetAtt:
-      - CreateS3ByLambdaFunction
-      - BucketExists
-    Export:
-      Name:
-        Fn::Sub: ${AWS::StackName}-S3BucketExists
   SetupInstructions:
     Description: GitHub Secrets to configure
     Value:
       Fn::Sub: "Add these secrets to your GitHub repository:\nAWS_ROLE_ARN: ${GitHubActionsRole.Arn}\n\
-        S3_BUCKET: ${S3BucketName}\nEC2_INSTANCE_ID: ${MyEC2Instance}\n\nS3 Bucket\
-        \ Status:\n- Bucket existed before deployment: ${CreateS3ByLambdaFunction.BucketExists}"
+        S3_BUCKET: ${S3BucketName}\nEC2_INSTANCE_ID: ${MyEC2Instance}"

@@ -3,19 +3,19 @@ Description: An ALB serving up a web server
 Parameters:
   VpcId:
     Type: String
-    Default: vpc-08f0ec02f7471b018
+    Default: vpc-02b92c6da0a9510cf
   InstanceType:
     Type: String
     Default: t3.micro
   ImageId:
     Type: String
-    Default: ami-003c24b59bb839e19
+    Default: ami-0150ccaf51ab55a51
   Subnets:
     Type: 'List<AWS::EC2::Subnet::Id>'
     Description: A list of subnets for the Auto Scaling group    
     # ca-central-1a
     # ca-central-1b
-    Default: "subnet-0d8058cb02f147a86,subnet-0e0fd31733061237d"
+    Default: "subnet-0cd38379ead627d09,subnet-01386f179d9ec5b0c"
 Resources:
   SG:
     Type: AWS::EC2::SecurityGroup

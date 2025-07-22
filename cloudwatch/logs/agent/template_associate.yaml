@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template to configure CloudWatch Agent on existing EC2 instance'
+Parameters:
+  EC2INSTANCEID:
+    Type: String
+    Default: i-06406c9bdd190215c
+    Description: EC2 Instance ID (must already be registered with SSM)
+  
+Resources:
+  ConfigureCloudWatchDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Automation
+      Content:
+        schemaVersion: '0.3'
+        description: Configure CloudWatch agent on EC2 instance
+        assumeRole: "{{AutomationAssumeRole}}"
+        parameters:
+          AutomationAssumeRole:
+            type: String
+            description: "(Optional) The ARN of the role that allows Automation to perform the actions on your behalf."
+            default: ""
+          InstanceId:
+            type: String
+            description: EC2 Instance ID
+          ApplicationLogGroup:
+            type: String
+            description: Application Log Group Name
+          SystemLogGroup:
+            type: String
+            description: System Log Group Name
+        mainSteps:
+          - name: UpdateSSMAgent
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-UpdateSSMAgent
+              InstanceIds:
+                - "{{InstanceId}}"
+              CloudWatchOutputConfig:
+                CloudWatchLogGroupName: "{{SystemLogGroup}}"
+                CloudWatchOutputEnabled: true
+
+          - name: InstallCloudWatchAgent
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-ConfigureAWSPackage
+              InstanceIds:
+                - "{{InstanceId}}"
+              Parameters:
+                action: Install
+                name: AmazonCloudWatchAgent
+                version: latest
+                installationType: "Uninstall and reinstall"
+                additionalArguments: "{}"
+              CloudWatchOutputConfig:
+                CloudWatchLogGroupName: "{{SystemLogGroup}}"
+                CloudWatchOutputEnabled: true
+
+          - name: ConfigureCloudWatchAgent
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunShellScript
+              InstanceIds:
+                - "{{InstanceId}}"
+              Parameters:
+                commands:
+                  - |
+                    # Create CloudWatch agent configuration
+                    sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+                    sudo cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
+                    {
+                        "agent": {
+                            "metrics_collection_interval": 60,
+                            "run_as_user": "cwagent"
+                        },
+                        "logs": {
+                            "logs_collected": {
+                                "files": {
+                                    "collect_list": [
+                                        {
+                                            "file_path": "/home/ec2-user/application.log",
+                                            "log_group_name": "{{ApplicationLogGroup}}",
+                                            "log_stream_name": "{instance_id}/application/main",
+                                            "timezone": "UTC",
+                                            "multi_line_start_pattern": "^\\\\d{4}-\\\\d{2}-\\\\d{2}\\\\s\\\\d{2}:\\\\d{2}:\\\\d{2}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "log_stream_name": "{instance_id}"
+                        }
+                    }
+                    EOF
+
+                    # Start CloudWatch agent
+                    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+                      -a fetch-config \
+                      -m ec2 \
+                      -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+                      -s
+
+                    # Verify installation
+                    sudo systemctl status amazon-cloudwatch-agent
+              CloudWatchOutputConfig:
+                CloudWatchLogGroupName: "{{SystemLogGroup}}"
+                CloudWatchOutputEnabled: true
+
+  MyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}/system'
+      RetentionInDays: 7
+
+  MyApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}/application'
+      RetentionInDays: 14
+
+  InstallCloudWatchAgentExecution:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: !Ref ConfigureCloudWatchDocument
+      Targets:
+        - Key: InstanceIds
+          Values:
+            - !Sub ${EC2INSTANCEID}
+      Parameters:
+        ApplicationLogGroup:
+          - !Ref MyApplicationLogGroup
+        SystemLogGroup:
+          - !Ref MyLogGroup
+      WaitForSuccessTimeoutSeconds: 300
+      AssociationName: !Sub "${AWS::StackName}-CloudWatchAgentAssociation"
+    DependsOn:
+      - MyLogGroup
+      - MyApplicationLogGroup
+      - ConfigureCloudWatchDocument
+
+Outputs:
+  SystemLogGroupName:
+    Description: Name of the System Log Group
+    Value: !Ref MyLogGroup
+  
+  ApplicationLogGroupName:
+    Description: Name of the Application Log Group
+    Value: !Ref MyApplicationLogGroup
+  
+  SSMDocumentName:
+    Description: Name of the SSM Document
+    Value: !Ref ConfigureCloudWatchDocument
