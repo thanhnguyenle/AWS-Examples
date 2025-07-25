@@ -1,5 +1,5 @@
 {
-  "Role": "arn:aws:iam::982383527471:role/s3-replication-role",
+  "Role": "arn:aws:iam::445567107164:role/s3-replication-role",
   "Rules": [
       {
           "Status": "Enabled",
@@ -7,7 +7,7 @@
           "DeleteMarkerReplication": { "Status": "Disabled" },
           "Filter" : { "Prefix": ""},
           "Destination": {
-              "Bucket": "arn:aws:s3:::replication-fun-us-east-ab-4535"
+              "Bucket": "arn:aws:s3:::replication-fun-us-east-abc123-453509"
           }
       }
   ]

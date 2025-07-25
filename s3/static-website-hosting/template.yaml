@@ -5,7 +5,7 @@ Description: "Static Website Hosting for SPA using CloudFront OAC"
 Parameters:
   NakedDomainName:
     Type: String
-    Default: 'mindmazelab.com'
+    Default: 'mindmazelab9876123.com'
 
 Resources:
   # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-s3-bucket.html

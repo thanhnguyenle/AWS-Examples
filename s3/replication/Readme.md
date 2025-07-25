@@ -1,15 +1,15 @@
 ## Create an s3 bucket
 
-aws s3 mb s3://replication-fun-ab-4535
-aws s3 mb s3://replication-fun-us-east-ab-4535 --region us-east-1
+aws s3 mb s3://replication-fun-abc123-453509
+aws s3 mb s3://replication-fun-us-east-abc123-453509 --region us-east-1
 
 
 ## Turn on S3 Versioning for both buckets
 
-aws s3api put-bucket-versioning --bucket replication-fun-ab-4535 --versioning-configuration Status=Enabled
-aws s3api put-bucket-versioning --bucket replication-fun-us-east-ab-4535  --versioning-configuration Status=Enabled
+aws s3api put-bucket-versioning --bucket replication-fun-abc123-453509 --versioning-configuration Status=Enabled
+aws s3api put-bucket-versioning --bucket replication-fun-us-east-abc123-453509  --versioning-configuration Status=Enabled
 
-# Create a Role and Policy for S3 Replication
+# Create a Role and Policy for S3 Replication (it not work with session token - manual in UI)
 
 aws iam create-policy --policy-name s3-replication-example --policy-document file://policy.json
 
@@ -24,18 +24,18 @@ aws iam attach-role-policy \
 ## Turn on Replication
 
 aws s3api put-bucket-replication \
-    --bucket replication-fun-ab-4535  \
+    --bucket replication-fun-abc123-453509  \
     --replication-configuration file://replication.json
 
 
 # create a file and upload to our bucket
 
 echo "Hello World" > hello.txt
-aws s3 cp hello.txt s3://replication-fun-ab-4535/hello.txt
+aws s3 cp hello.txt s3://replication-fun-abc123-453509/hello.txt
 
 # check dest bucket to see if replication worked
 
-aws s3 ls s3://replication-fun-us-east-ab-4535
+aws s3 ls s3://replication-fun-us-east-abc123-453509
 
 # Cleanup
 
