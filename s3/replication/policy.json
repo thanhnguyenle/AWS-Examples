@@ -8,7 +8,7 @@
               "s3:ListBucket"
           ],
           "Resource": [
-              "arn:aws:s3:::replication-fun-ab-4535"
+              "arn:aws:s3:::replication-fun-abc123-453509"
           ]
       },
       {
@@ -19,7 +19,7 @@
               "s3:GetObjectVersionTagging"
           ],
           "Resource": [
-              "arn:aws:s3:::replication-fun-ab-4535/*"
+              "arn:aws:s3:::replication-fun-abc123-453509/*"
           ]
       },
       {
@@ -29,7 +29,7 @@
               "s3:ReplicateDelete",
               "s3:ReplicateTags"
           ],
-          "Resource": "arn:aws:s3:::replication-fun-us-east-ab-4535/*"
+          "Resource": "arn:aws:s3:::replication-fun-us-east-abc123-453509/*"
       }
   ]
 }

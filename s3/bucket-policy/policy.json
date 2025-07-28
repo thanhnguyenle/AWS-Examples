@@ -1,19 +1,22 @@
 {
   "Statement": [
-     {
-        "Effect": "Allow",
-        "Principal": {
-           "AWS": "arn:aws:iam::387543059434:user/andrewbrown"
-        },
-        "Action": [
-          "s3:ListBucket",
-          "s3:GetObject",
-          "s3:PutObject"
-        ],
-        "Resource": [
-          "arn:aws:s3:::bucket-policy-example-ab-5235",
-          "arn:aws:s3:::bucket-policy-example-ab-5235/*"
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::387543059434:user/andrewbrown",
+          "arn:aws:iam::645567107165:user/nguyenlethanh"
         ]
-     }
+      },
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetObject", 
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::bucket-policy-example-abc2-9090",
+        "arn:aws:s3:::bucket-policy-example-abc2-9090/*"
+      ]
+    }
   ]
 }

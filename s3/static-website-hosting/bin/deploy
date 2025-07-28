@@ -3,6 +3,6 @@
 echo "== deploy"
 
 aws cloudformation deploy \
---template-file /workspace/AWS-Examples/s3/static-website-hosting/template.yaml \
+--template-file ../template.yaml \
 --stack-name spa-s3 \
 --no-execute-changeset

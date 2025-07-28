@@ -19,9 +19,13 @@ md5sum myfile.txt
 
 ## Upload our file and look at its etag
 
-```
+```bash
 aws s3 cp myfile.txt s3://checksums-examples-ab-2342
 aws s3api head-object --bucket checksums-examples-ab-2342 --key myfile.txt
+```
+## get checksum of object in s3
+```bash
+aws s3api get-object-attributes --bucket checksums-examples-ab-2342 --key myfile.txt --object-attributes Checksum
 ```
 
 ## Lets upload a file with a different kind of checsum

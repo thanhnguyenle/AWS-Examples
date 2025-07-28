@@ -23,9 +23,9 @@ data "aws_iam_policy_document" "topic" {
   }
 }
 
-resource "aws_sns_topic_subscription" "default" {
-  topic_arn = aws_sns_topic.topic.arn
-  protocol  = "https"
-  endpoint  = "https://4567-examproco-awsexamples-nhcz01r37xo.ws-us107.gitpod.io/data"
-  endpoint_auto_confirms = true
-}
+# resource "aws_sns_topic_subscription" "default" {
+#   topic_arn = aws_sns_topic.topic.arn
+#   protocol  = "https"
+#   endpoint  = "https://4567-examproco-awsexamples-nhcz01r37xo.ws-us107.gitpod.io/data"
+#   endpoint_auto_confirms = true
+# }

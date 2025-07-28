@@ -1,14 +1,20 @@
 ## Create a bucket
 
-aws s3 mb s3://encrypt-client-fun-ab-634232
+aws s3 mb s3://encrypt-client-fun-abc1-634232
 
 
-### Run our our SDK ruby script
+### Run our our SDK python script
 
-bundle exec ruby encrypt.rb
+```bash
+pip install -r requirements.txt
+
+python encryption_client.py
+```
 
 
 # Cleanup 
 
-aws s3 rm s3://encrypt-client-fun-ab-634232/hello.txt
-aws s3 rb s3://encrypt-client-fun-ab-634232
+```bash
+aws s3 rm s3://encrypt-client-fun-abc1-634232/hello.txt
+aws s3 rb s3://encrypt-client-fun-abc1-634232
+```
