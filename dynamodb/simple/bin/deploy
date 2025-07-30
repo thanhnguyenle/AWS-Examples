@@ -18,8 +18,9 @@ root_path=$(realpath .)
 echo "== SAM deploy..."
 #echo "loading configuration: $config_path"
 
-sam deploy \
-  --template-file "./.aws-sam/build/template.yaml" \
+aws cloudformation deploy \
+  --no-execute-changeset \
+  --template-file "../template.yml" \
   --stack-name "db-table" \
   --capabilities "CAPABILITY_IAM"
   #--config-file "$config_path" \

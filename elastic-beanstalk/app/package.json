@@ -1,0 +1,16 @@
+{
+  "name": "eb-test-app",
+  "version": "1.0.0",
+  "description": "Test application for Elastic Beanstalk deployment strategies",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "keywords": ["elastic-beanstalk", "deployment", "test"],
+  "author": "Test User",
+  "license": "MIT"
+}

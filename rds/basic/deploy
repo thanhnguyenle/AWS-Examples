@@ -9,6 +9,61 @@ aws cloudformation deploy \
 --template-file template.yaml \
 --capabilities CAPABILITY_NAMED_IAM \
 --no-execute-changeset \
---parameter-overrides VpcId="vpc-08f0ec02f7471b018" WebServerSGGroupId="sg-098fa834d80e2fc3c" RdsSecretArn="arn:aws:secretsmanager:ca-central-1:982383527471:secret:MyRdsPassword-x51sy9" Username="andrewbrown" Subnets="subnet-0e0fd31733061237d,subnet-0377c6b172e2951d4,subnet-0d8058cb02f147a86" \
---region ca-central-1 \
+--parameter-overrides VpcId="vpc-02b92c6da0a9510cf" WebServerSGGroupId="sg-088ddba85eecaa08d" RdsSecretArn="arn:aws:secretsmanager:us-east-1:445567107164:secret:MyRdsPassword-sG6EGI" Username="dbadmin" Subnets="subnet-0ae1c6149542760b4,subnet-0cd38379ead627d09" \
+--region us-east-1 \
 --stack-name $STACK_NAME
+
+# This AWS CLI command uses CloudFormation to deploy infrastructure as code. Let me break down each component:
+# Command Structure
+
+# aws cloudformation deploy
+# => This is the main command for deploying CloudFormation stacks with a simplified interface compared to create-stack or update-stack.
+
+# Parameters Explained
+
+# --template-file template.yaml
+
+# Specifies the CloudFormation template file to deploy
+# Must be a local YAML or JSON file containing your infrastructure definition
+
+# --capabilities CAPABILITY_NAMED_IAM
+
+# Required when your template creates IAM resources with custom names
+# Acknowledges that CloudFormation can create IAM roles, policies, or users
+# Without this, deployment would fail if IAM resources are defined
+
+# --no-execute-changeset
+
+# Creates a changeset but doesn't execute it immediately
+# Allows you to review what changes will be made before applying them
+# You'd need to manually execute the changeset afterward to apply changes
+
+# --parameter-overrides
+
+# Provides values for parameters defined in your template
+# Your specific values:
+
+# VpcId: The VPC where resources will be deployed
+# WebServerSGGroupId: Security group ID for web servers
+# RdsSecretArn: AWS Secrets Manager ARN containing RDS credentials
+# Username: Database username (andrewbrown)
+# Subnets: Comma-separated list of three subnet IDs for multi-AZ deployment
+
+# --region ca-central-1
+
+# Deploys to Canada Central region
+# All resources will be created in this region
+
+# --stack-name $STACK_NAME
+
+# Uses an environment variable for the stack name
+# The stack name must be set beforehand: export STACK_NAME="my-stack-name"
+
+# What This Does
+
+# Reviews your template.yaml file
+# Creates a changeset showing what resources will be created/updated/deleted
+# Waits for your manual approval (due to --no-execute-changeset)
+# Uses the provided parameter values instead of defaults or prompting
+
+# This is a safe deployment approach since you can review changes before they're applied to your AWS environment.

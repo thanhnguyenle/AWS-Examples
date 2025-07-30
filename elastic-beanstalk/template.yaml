@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Elastic Beanstalk using existing VPC'
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: 'test-app'
+    Description: 'Name of the Elastic Beanstalk application'
+    
+  KeyPairName:
+    Type: String
+    Description: 'EC2 Key Pair for SSH access (optional)'
+    Default: ''
+    
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID where Elastic Beanstalk will be deployed'
+    
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Subnet IDs for Elastic Beanstalk instances (use public subnets)'
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
+
+Resources:
+  # S3 Bucket for application versions
+  ApplicationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ApplicationName}-versions-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Service Role for Elastic Beanstalk
+  ElasticBeanstalkServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-service-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: elasticbeanstalk.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy
+
+  # IAM Instance Role
+  ElasticBeanstalkInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+
+  # Instance Profile
+  ElasticBeanstalkInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ApplicationName}-instance-profile'
+      Roles:
+        - !Ref ElasticBeanstalkInstanceRole
+
+  # Security Group for Elastic Beanstalk instances
+  EBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ApplicationName}-eb-sg'
+      GroupDescription: 'Security group for Elastic Beanstalk instances'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTPS access'
+        - !If
+          - HasKeyPair
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: 0.0.0.0/0
+            Description: 'SSH access'
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub '${ApplicationName}-eb-sg'
+
+  # Elastic Beanstalk Application
+  ElasticBeanstalkApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: !Ref ApplicationName
+      Description: 'Application deployed in specific VPC'
+
+  # Environment for testing
+  TestEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      ApplicationName: !Ref ElasticBeanstalkApplication
+      EnvironmentName: !Sub '${ApplicationName}-env'
+      Description: 'Environment in specific VPC'
+      SolutionStackName: '64bit Amazon Linux 2023 v6.6.1 running Node.js 20'
+      Tier:
+        Name: WebServer
+        Type: Standard
+      OptionSettings:
+        # Instance Configuration
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: InstanceType
+          Value: t2.micro
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref ElasticBeanstalkInstanceProfile
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref EBSecurityGroup
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: EC2KeyName
+          Value: !If [HasKeyPair, !Ref KeyPairName, !Ref 'AWS::NoValue']
+        
+        # VPC Configuration - REQUIRED
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref VpcId
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value: !Join [',', !Ref SubnetIds]
+        - Namespace: aws:ec2:vpc
+          OptionName: AssociatePublicIpAddress
+          Value: 'true'
+        
+        # Environment Type
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: SingleInstance
+        
+        # Auto Scaling
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: '1'
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: '1'
+        
+        # Health Monitoring
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: basic
+        
+        # Service Role
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: ServiceRole
+          Value: !Ref ElasticBeanstalkServiceRole
+        
+        # Deployment Policy
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: Rolling
+
+Outputs:
+  ApplicationName:
+    Description: 'Elastic Beanstalk Application Name'
+    Value: !Ref ElasticBeanstalkApplication
+    
+  EnvironmentName:
+    Description: 'Environment Name'
+    Value: !Ref TestEnvironment
+    
+  EnvironmentURL:
+    Description: 'Environment URL'
+    Value: !GetAtt TestEnvironment.EndpointURL
+    
+  S3Bucket:
+    Description: 'S3 bucket for application versions'
+    Value: !Ref ApplicationBucket
+    
+  SecurityGroupId:
+    Description: 'Security Group ID for EB instances'
+    Value: !Ref EBSecurityGroup
+    
+  ServiceRoleArn:
+    Description: 'Service Role ARN'
+    Value: !GetAtt ElasticBeanstalkServiceRole.Arn
