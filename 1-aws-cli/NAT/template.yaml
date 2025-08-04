@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: NAT Instance setup with SSM support for private instances
+
+Parameters:
+  AMIImageId:
+    Description: AMI ID for the NAT instance
+    Type: String
+    Default: ami-08a6efd148b1f7504
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: NAT-VPC
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: NAT-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnet (for NAT instance)
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Public-Subnet
+
+  # Private Subnet (for private instances)
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Private-Subnet
+
+  # Route Table for Public Subnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Route Table for Private Subnet
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Private-RT
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref NATInstance
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  # No VPC Endpoints needed - private instances will use NAT for internet access
+
+  # IAM Role for EC2 instances to use SSM
+  EC2SSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: EC2-SSM-Role
+
+  EC2SSMInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2SSMRole
+
+  # Security Group for NAT Instance
+  NATSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for NAT instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.2.0/24 # Private subnet CIDR
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.2.0/24 # Private subnet CIDR
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: NAT-SG
+
+  # Security Group for Private Instances
+  PrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for private instances
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.1.0/24 # Public subnet CIDR (for NAT instance)
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Private-SG
+
+  # NAT Instance (Free Tier: t2.micro)
+  NATInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMIImageId
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref EC2SSMInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref NATSecurityGroup
+          SubnetId: !Ref PublicSubnet
+      SourceDestCheck: false # CRITICAL: Must disable for NAT functionality
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+          # Update the system
+          yum update -y
+
+          # Install SSM Agent (usually pre-installed on Amazon Linux 2)
+          yum install -y amazon-ssm-agent
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+
+          # Enable IP forwarding
+          echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+          sysctl -p
+
+          # Configure iptables for NAT
+          iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+          iptables -A FORWARD -i eth0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+          iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT
+
+          # Save iptables rules
+          service iptables save
+
+          # Ensure iptables starts on boot
+          chkconfig iptables on
+      Tags:
+        - Key: Name
+          Value: NAT-Instance
+
+  # Test Private Instance with SSM support
+  PrivateInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMIImageId
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref EC2SSMInstanceProfile
+      SecurityGroupIds:
+        - !Ref PrivateSecurityGroup
+      SubnetId: !Ref PrivateSubnet
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+          # Update the system
+          yum update -y
+
+          # Install SSM Agent (usually pre-installed on Amazon Linux 2)
+          yum install -y amazon-ssm-agent
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+      Tags:
+        - Key: Name
+          Value: Private-Test-Instance
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  NATInstanceId:
+    Description: NAT Instance ID
+    Value: !Ref NATInstance
+
+  NATInstancePublicIP:
+    Description: NAT Instance Public IP
+    Value: !GetAtt NATInstance.PublicIp
+
+  PrivateInstanceId:
+    Description: Private Instance ID (for testing)
+    Value: !Ref PrivateInstance
+
+  SSMConnectCommand:
+    Description: Command to connect to private instance via SSM
+    Value: !Sub aws ssm start-session --target ${PrivateInstance}
+
+  TestCommand:
+    Description: SSH to private instance via NAT
+    Value: !Sub ssh -i your-key.pem -o ProxyCommand="ssh -W %h:%p -i your-key.pem
+      ec2-user@${NATInstance.PublicIp}" ec2-user@${PrivateInstance.PrivateIp}
