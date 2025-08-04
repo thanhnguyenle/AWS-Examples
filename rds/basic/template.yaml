@@ -15,12 +15,12 @@ Parameters:
     Default: 0
   InstanceClass:
     Type: String
-    Default: db.t3.micro
+    Default: db.t4g.micro
   EngineVersion:
     Type: String
     #  DB Proxy only supports very specific versions of Postgres
     #  https://stackoverflow.com/questions/63084648/which-rds-db-instances-are-supported-for-db-proxy
-    Default: '15.4'
+    Default: '17.5'
   PubliclyAccessible:
     Type: String
     AllowedValues:
